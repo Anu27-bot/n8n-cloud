@@ -4,7 +4,9 @@
   "description": "Deploy n8n to Render",
   "main": "index.js",
   "scripts": {
-    "start": "n8n start"
+    "start": "n8n start",
+    "audit": "npm audit --production",  // Checks only runtime dependencies
+   "audit:fix": "npm audit fix --production"
   },
   "dependencies": {
     "n8n": "^1.24.0"
