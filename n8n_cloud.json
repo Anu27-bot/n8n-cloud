@@ -1,0 +1,635 @@
+{
+  "name": "thursday",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8e8bf39b-4e5b-4187-bdd4-50cf63fc410a",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "ignoreConversionErrors": false
+        }
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        0
+      ],
+      "id": "06799b7c-0893-4b76-a445-86d49ae01f45",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst seen = new Set();\n\nfor (const item of items) {\n  const text = item.json.text || \"\";\n  const cleanedText = text.replace(/\\\\n/g, '\\n');\n\n  const jobIdMatches = [...cleanedText.matchAll(/Job ID:\\s*([A-Z]+-\\d+)/g)];\n  const jobBlocks = cleanedText.split(/Job ID:\\s*[A-Z]+-\\d+/g);\n\n  for (let i = 1; i < jobBlocks.length; i++) {\n    const jobId = jobIdMatches[i - 1] ? jobIdMatches[i - 1][1] : \"Not Found\";\n    const jobDescription = jobBlocks[i].trim();\n\n    // ✅ Check for duplicates\n    if (!seen.has(jobId)) {\n      seen.add(jobId);\n      results.push({\n        json: {\n          jobId,\n          jobDescription,\n        }\n      });\n    }\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        0
+      ],
+      "id": "4a98807a-1472-496c-8594-b66d30e7d037",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 30,
+        "simple": false,
+        "filters": {
+          "q": "Subject:(Onsite/Local OR Hybrid/Local OR Remote/Local)"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ffd01e29-033c-4335-9e3c-ee1223639fdb",
+      "name": "Get many messages",
+      "webhookId": "9986fc9b-8fc3-4bbd-8ecc-2c39dd080e98",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "5Sgozb17CUYuOmaT",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 30,
+        "simple": false,
+        "filters": {
+          "q": "has:attachment is:unread -subject:\"Hybrid/Local\" -subject:\"Onsite/Local\" -subject:\"Remote/Local\""
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -64,
+        448
+      ],
+      "id": "bd32ad97-48d7-4516-9881-3b714f38ca93",
+      "name": "Get many messages1",
+      "webhookId": "0c3cad39-4ae3-40af-a2bd-d739b8c51a16",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "5Sgozb17CUYuOmaT",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d86baf70-da6b-4e88-a87d-3a884c5cce51",
+              "name": "subject",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "include": "selected",
+        "includeFields": "attachments",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        448
+      ],
+      "id": "8b33a18c-69ad-4b76-8490-16483801e1a1",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst RESUME_KEYWORDS = ['resume', 'cv', 'full_stack', 'full stack'];\nconst INSIDE_KEYWORDS = ['education', 'skills', 'experience', 'certifications', 'projects', 'summary', 'objective', 'technologies', 'work history'];\nconst SUPPORTED_TEXT_EXTENSIONS = ['txt', 'pdf', 'docx', 'doc'];\nconst EXCLUDED_KEYWORDS = [\n  'rtr', 'pmi', 'certification', 'skill matrix', 'driver license',\n  'driving license', 'passport', 'visa', 'h1b', 'gc', 'pan', 'i-129',\n  'sm', 'cover sheet', 'mi-cover', 'mi cover', 'InnoSoul, Inc.', 'dl',\n  '529501362', '767470', '529601471', 'jpeg', 'image',\n];\n\nfor (const item of items) {\n  const subject = item.json.subject || '';\n  const jobMatch = subject.match(/\\b[A-Z]{2}-?\\d{5,9}\\b/);\n  const job_id = jobMatch ? jobMatch[0].replace(/\\s/g, '') : null;\n  const attachments = item.binary || {};\n  const validAttachments = [];\n  \n  // Filter valid attachments\n  for (const key in attachments) {\n    const file = attachments[key];\n    const fileName = file.fileName?.toLowerCase() || '';\n    if (EXCLUDED_KEYWORDS.some(bad => fileName.includes(bad))) {\n      continue;\n    }\n    validAttachments.push({\n      file,\n      fileName: file.fileName, // Keep original case for saving\n      extension: fileName.split('.').pop(),\n      size: file.fileSize || 0,\n      key\n    });\n  }\n\n  let found = false;\n  \n  // Process attachments\n  for (const fileData of validAttachments) {\n    const { file, fileName, extension } = fileData;\n    let matched = false;\n\n    // Filename match\n    if (RESUME_KEYWORDS.some(k => fileName.toLowerCase().includes(k))) {\n      matched = true;\n    }\n\n    // Content match\n    if (!matched && SUPPORTED_TEXT_EXTENSIONS.includes(extension)) {\n      try {\n        const text = Buffer.from(file.data, 'base64').toString('utf8');\n        if (INSIDE_KEYWORDS.some(word => text.toLowerCase().includes(word))) {\n          matched = true;\n        }\n      } catch (e) {\n        console.log(`Error reading file ${fileName}: ${e.message}`);\n      }\n    }\n\n    if (matched) {\n      results.push({\n        json: {\n          job_id,\n          fileName: fileName,\n          fileExtension: extension,\n          fileSize: file.fileSize,\n          status: \"Resume identified\"\n        },\n        binary: {\n          resumeFile: file // This contains the binary data\n        }\n      });\n      found = true;\n      break;\n    }\n  }\n\n  // Fallback to largest valid attachment\n  if (!found && validAttachments.length > 0) {\n    const fallbackFile = validAttachments.sort((a, b) => b.size - a.size)[0];\n    results.push({\n      json: {\n        job_id,\n        fileName: fallbackFile.fileName,\n        fileExtension: fallbackFile.extension,\n        fileSize: fallbackFile.size,\n        status: \"Fallback attachment\"\n      },\n      binary: {\n        resumeFile: fallbackFile.file\n      }\n    });\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        432
+      ],
+      "id": "971a9cf4-d324-4d7b-9e05-d62ef512223a",
+      "name": "Code1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        256
+      ],
+      "id": "24598644-d776-48b2-8556-30314515c0a9",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT * FROM input1\n\nINNER JOIN input2\n\nON input1.jobId = input2.job_id\n \n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2096,
+        112
+      ],
+      "id": "54fe7824-03df-4b88-b5dd-4cbf74d3d09a",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2384,
+        96
+      ],
+      "id": "e25bb21f-61c4-4a13-ba75-8643743a16ca",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pdf.co/v1/file/upload  ",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "anu892271@gmail.com_0bki582dOLlAxauWCvgmZWBVqleCSVzBbcYuMDhDD2UzfOsLazslNecpITZmPnqo"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "resumeFile"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "14eaba8d-3d5f-4504-82ef-9b3f5db5cb8d",
+      "name": "File conversion",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1840,
+        720
+      ],
+      "notesInFlow": true,
+      "typeVersion": 4.2,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$binary.resumeFile.mimeType}}",
+                    "rightValue": "application/pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "62b793ed-02bc-4927-bd63-8be7b6a67de6"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pdf"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "0c44acd5-37e6-4a60-b407-5c191c56abc0",
+                    "leftValue": "={{$binary.resumeFile.mimeType}}",
+                    "rightValue": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "docx"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "f7ff3854-29a4-45a8-ac06-6bb28947d5d1",
+                    "leftValue": "={{$binary.resumeFile.mimeType}}",
+                    "rightValue": "application/msword",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": ".doc"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "16ddfde5-b533-40a9-9460-fd1dc200b229",
+                    "leftValue": "={{$binary.resumeFile.mimeType}}",
+                    "rightValue": "text/plain",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "txt"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1072,
+        416
+      ],
+      "id": "0357b265-4fdc-4910-8f8a-aa654031f753",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "const services = $input.all();\n\nconst updatedServices = services.map((service) => {\n  const port = service?.json?.data?.port;\n  const isHighPort = typeof port === 'number' && port > 5000;\n\n  const binaryKeys = service.binary ? Object.keys(service.binary) : [];\n\n  return {\n    json: {\n      ...service.json,\n      \"high-port\": isHighPort,\n      binaryKeys: binaryKeys\n    },\n    binary: service.binary ? { ...service.binary } : undefined\n  };\n});\n\nreturn updatedServices;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        608
+      ],
+      "id": "0f2cad06-7d7f-4467-a6ba-3592a41940a4",
+      "name": "Code3"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "resumeFile",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        384
+      ],
+      "id": "f5be6064-b125-4709-a980-73b9bfe4ae23",
+      "name": "Extract from pdf"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2176,
+        1248
+      ],
+      "id": "330161c6-ebc9-431e-8760-1fa7285ec198",
+      "name": "Extract from Text"
+    },
+    {
+      "parameters": {
+        "operation": "rtf",
+        "binaryPropertyName": "resumeFile",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2192,
+        1024
+      ],
+      "id": "b32be50d-ac4e-4302-977f-1f709570b65e",
+      "name": "Extract from Doc"
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "binaryPropertyName": "resumeFile",
+        "destinationKey": "base64String",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        800
+      ],
+      "id": "1df7ab26-c020-44da-9110-cd1dbbd48209",
+      "name": "Extract from Docx"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e952aec4-8781-4eb1-ac55-76bc492ceb63",
+              "name": "string",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "932ce678-ca91-4764-b6e1-25da8e81604f",
+              "name": "data",
+              "value": "={{ $json.data }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2608,
+        544
+      ],
+      "id": "82519271-268b-4cf2-888b-5ad727990303",
+      "name": "Edit Fields4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = [];\n\nfor (const item of $input.all()) {\n  const jobId = item.json.jobId || \"\";\n  const jobDescription = item.json.jobDescription || \"\";\n\n  // Match patterns like \"Hybrid/Local\", \"Onsite/Local\", \"Remote/Local\"\n  const pattern = /(Hybrid\\/Local|Onsite\\/Local|Remote\\/Local)[^\\n]*?(.*)\\n\\nLocation:/s;\n  const match = jobDescription.match(pattern);\n\n  let extractedSkills = [];\n\n  if (match && match[2]) {\n    const rawSkills = match[2];\n\n    extractedSkills = rawSkills\n      .split(',')\n      .map(skill => skill.replace(/\\(.*?\\)/g, '').trim()) // Remove things like (must)\n      .filter(skill => skill.length > 0);\n  }\n\n  result.push({\n    jobId,\n    extractedSkills\n  });\n}\n\nreturn result;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        32
+      ],
+      "id": "448e3c02-3cc5-4f1d-bd47-4e3e8fcd8316",
+      "name": "Code5"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Code5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many messages": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many messages1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get many messages1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get many messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "File conversion": {
+      "main": [
+        [
+          {
+            "node": "Extract from Docx",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Extract from pdf",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code3": {
+      "main": [
+        [
+          {
+            "node": "File conversion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from pdf": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from Text": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from Doc": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from Docx": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f6d2fdb0-c5ad-455f-9f5d-ea13ea5030e4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a4b3583869c6cc3b586b425aef99281dfb4c736c007d54fd86b7369b51093739"
+  },
+  "id": "DK5kbiKo5NZoUVNu",
+  "tags": []
+}
