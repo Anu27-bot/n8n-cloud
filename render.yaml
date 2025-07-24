@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: n8n
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: N8N_ENCRYPTION_KEY
+        value: your_random_key_here
+      - key: N8N_PROTOCOL
+        value: https
