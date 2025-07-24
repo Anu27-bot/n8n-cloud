@@ -4,7 +4,7 @@
   "description": "Deploy n8n to Render",
   "main": "index.js",
   "scripts": {
-    "start": "n8n start",
+    "start": "n8n start --tunnel",
     "audit": "npm audit --production",
     "audit:fix": "npm audit fix --production"
   },
